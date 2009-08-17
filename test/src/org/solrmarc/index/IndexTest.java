@@ -3,27 +3,51 @@ package org.solrmarc.index;
 import static org.junit.Assert.*;
 import org.junit.After;
 import java.io.*;
-import java.nio.channels.FileChannel;
 import java.util.*;
 
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.log4j.*;
-//import org.apache.lucene.document.Document;
-//import org.apache.lucene.index.IndexReader;
-//import org.apache.lucene.search.*;
-//import org.apache.solr.core.*;
-//import org.apache.solr.schema.*;
-//import org.apache.solr.search.*;
-import org.solrmarc.marc.MarcHandler;
 import org.solrmarc.marc.MarcImporter;
-import org.solrmarc.solr.DocumentProxy;
-import org.solrmarc.solr.SolrCoreLoader;
-import org.solrmarc.solr.SolrCoreProxy;
-import org.solrmarc.solr.SolrSearcherProxy;
+import org.solrmarc.solr.*;
+import org.solrmarc.tools.Utils;
 import org.xml.sax.SAXException;
 
 public abstract class IndexTest {
+	
+	
+	// Note:  the hardcodings below are only used when the tests are
+	//  invoked without the properties set
+	//   the properties ARE set when the tests are invoke via ant.
+	
+	protected String solrmarcPath = System.getProperty("solrmarc.path");
+	{
+		if (solrmarcPath == null)
+			solrmarcPath = "solrmarcProjectDir"; 
+	}
+	protected String siteSpecificPath = System.getProperty("solrmarc.site.path");
+	{
+		if (siteSpecificPath == null)
+			siteSpecificPath = "yourSiteSpecificDir"; 
+	}
+	
+	protected String configPropFile = siteSpecificPath + File.separator +"your_config.properties";
+	
+	protected String solrPath = System.getProperty("solr.path");
+	{
+		if (solrPath == null)
+			solrPath = "yourSolrDir";
+	}
+
+	protected String testDir = siteSpecificPath + File.separator + "test";
+	protected String testDataParentPath = testDir + File.separator + "data";
+	protected String testDataPath = testDataParentPath + File.separator + "allfieldsTests.mrc";
+	protected String solrDataDir = System.getProperty("solr.data.dir");
+	{
+		if (solrDataDir == null)
+			solrDataDir = testDir + File.separator + "solr" + File.separator + "data";
+	}
+
 	
 	protected MarcImporter importer;
     protected SolrCoreProxy solrCoreProxy;
@@ -50,7 +74,7 @@ public abstract class IndexTest {
         if (!Boolean.parseBoolean(System.getProperty("test.solr.verbose")))
         {
             java.util.logging.Logger.getLogger("org.apache.solr").setLevel(java.util.logging.Level.SEVERE);
-            setLog4jLogLevel(org.apache.log4j.Level.WARN);
+            Utils.setLog4jLogLevel(org.apache.log4j.Level.WARN);
         }
         if (solrPath != null)  
         {
@@ -100,42 +124,7 @@ public abstract class IndexTest {
 	    }
 	    return(searcherProxy);
 	}
-	
-	@SuppressWarnings("unchecked")
-    private static void setLog4jLogLevel(org.apache.log4j.Level newLevel)
-	{
-        Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
-        Enumeration<Logger> enLogger = rootLogger.getLoggerRepository().getCurrentLoggers();
-        Logger tmpLogger = null;
-        /* If logger is root, then need to loop through all loggers under root
-        * and change their logging levels too.  Also, skip sql loggers so
-        they
-        * do not get effected.
-        */
-        while(enLogger.hasMoreElements())
-        {
-            tmpLogger = (Logger)(enLogger.nextElement());
-            tmpLogger.setLevel(newLevel);
-        }
-        Enumeration<Appender> enAppenders = rootLogger.getAllAppenders();
-        Appender appender;
-        while(enAppenders.hasMoreElements())
-        {
-            appender = (Appender)enAppenders.nextElement();
-            
-            if(appender instanceof AsyncAppender)
-            {
-                AsyncAppender asyncAppender = (AsyncAppender)appender;
-                asyncAppender.activateOptions();
-//                rfa = (RollingFileAppender)asyncAppender.getAppender("R");
-//                rfa.activateOptions();
-//                ca = (ConsoleAppender)asyncAppender.getAppender("STDOUT");
-//                ca.activateOptions();
-            }
-        }
-
-	}
-	
+		
 	/**
 	 * ensure IndexSearcher and SolrCore are reset for next test
 	 */

@@ -7,7 +7,14 @@ E_BADARGS=65
 
 scriptdir=$( (cd -P $(dirname $0) && pwd) )
 
-java @MEM_ARGS@ -Dmarc.source="NONE" -Dsolr.optimize_at_end="true" -jar $scriptdir/@CUSTOM_JAR_NAME@ $1 
+if [[ "$SOLRMARC_MEM_ARGS" == "" ]] 
+then
+    SOLRMARC_MEM_ARGS='@MEM_ARGS@'
+fi
+
+SOLRWAR_OR_JARS=@SOLR_JAR_DEF@
+
+java $SOLRMARC_MEM_ARGS $SOLRWAR_OR_JARS -Dmarc.source="NONE" -Dsolr.optimize_at_end="true" -jar $scriptdir/@CUSTOM_JAR_NAME@ $1 
 
 exit 0
 

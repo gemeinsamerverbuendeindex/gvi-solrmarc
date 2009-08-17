@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.*;
 import javax.xml.parsers.ParserConfigurationException;
 
-//import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Document;
 import org.junit.*;
 import org.xml.sax.SAXException;
 
@@ -33,10 +33,8 @@ public class AccessTests extends BibIndexTest {
 		throws ParserConfigurationException, IOException, SAXException
 	{
 		// facets are indexed, not stored
-		assertStringFieldProperties(fldName, solrCore, sis);
+		assertFacetFldProps(fldName, solrCore, sis);
 		assertFieldMultiValued(fldName, solrCore);
-		assertFieldIndexed(fldName, solrCore);
-		assertFieldNotStored(fldName, solrCore);
 		assertEquals("accessMethod string incorrect: ", "Online", Access.ONLINE.toString());
 		assertEquals("accessMethod string incorrect: ", "At the Library", Access.AT_LIBRARY.toString());
 	}
@@ -64,6 +62,7 @@ public class AccessTests extends BibIndexTest {
 		docIds.add("mult856and956"); 
 		docIds.add("956and856TOCand856suppl"); 
 		docIds.add("7117119"); 
+		docIds.add("newSfx"); 
 
 		assertSearchResults(fldName, fldVal, docIds, sis);
 	}
@@ -80,11 +79,8 @@ public class AccessTests extends BibIndexTest {
 	
     	String fldVal =  Access.ONLINE.toString();
 
-		Set<String> docIds = new HashSet<String>();
 		// has SFX url in 956
-		docIds.add("7117119"); 
-    	
-		assertSearchResults(fldName, fldVal, docIds, sis);
+		assertSingleResult("7117119", fldName, fldVal, sis);
 	}
 
 
@@ -100,12 +96,14 @@ public class AccessTests extends BibIndexTest {
 	
 		Set<String> docIds = new HashSet<String>();
 		docIds.add("123http"); 
+		docIds.add("124http"); 
 		docIds.add("1234https"); 
 		docIds.add("7423084"); 
 		assertSearchResults(fldName, fldVal, docIds, sis);
 		
 		String urlFldName = "url";
 		assertDocHasNoField("123http", urlFldName, sis);
+		assertDocHasNoField("124http", urlFldName, sis);
 		assertDocHasNoField("1234https", urlFldName, sis);
 	}
 
@@ -122,12 +120,13 @@ public class AccessTests extends BibIndexTest {
 		createIxInitVars("buildingTests.mrc");
 
 	 	// "Online"
+		// has SFX url in 956
 	 	assertSingleResult("7117119", fldName, Access.ONLINE.toString(), sis);
 
 	 	// "At the Library"
 	 	String fldVal = "\"" + Access.AT_LIBRARY.toString() + "\"";
 	 	// don't want to check *all* of them ...
-	 	String docList[] = getDocIDList(fldName, fldVal);
+	 	List<Document> docList = getAllMatchingDocs(fldName, fldVal, sis);
 	 	String msg = fldName + " " + Access.AT_LIBRARY.toString() + ": ";
 	 	// formerly "On campus"
 	 	assertDocInList(docList, "115472", msg, sis); 

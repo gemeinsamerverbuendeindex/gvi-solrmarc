@@ -49,9 +49,12 @@ public class SolrIndexer
 
     /** list of path to look for property files in */
     private String propertyFilePaths[];
+    
+    /** Error Handler used for reporting errors */
+    private ErrorHandler errors;
         
     // Initialize logging category
-    static Logger logger = Logger.getLogger(MarcImporter.class.getName());
+    protected static Logger logger = Logger.getLogger(MarcImporter.class.getName());
 
     /**
      * private constructor; initializes fieldMap, transMapMap and indexDate to empty
@@ -437,8 +440,18 @@ public class SolrIndexer
      * Given a record, return a Map of solr fields (keys are field names, values
      *  are an Object containing the values (a Set or a String)
      */
-    public Map<String, Object> map(Record record)
+    public Map<String, Object> map(Record record)    
     {
+        return( map(record, null));
+    }
+    
+    /**
+     * Given a record, return a Map of solr fields (keys are field names, values
+     *  are an Object containing the values (a Set or a String)
+     */
+    public Map<String, Object> map(Record record, ErrorHandler errors)
+    {
+        this.errors = errors;
         Map<String, Object> indexMap = new HashMap<String, Object>();
         
         for (String key : fieldMap.keySet())
@@ -487,6 +500,7 @@ public class SolrIndexer
                     return new HashMap<String, Object>();
             }
         }
+        this.errors = null;
         return indexMap;
     }
 
@@ -503,6 +517,7 @@ public class SolrIndexer
         {
             Method method;
             Object retval;
+            Class<?> returnType;
             if (indexParm.indexOf("(") != -1)
             {
                 String functionName = indexParm.substring(0, indexParm.indexOf('('));
@@ -520,22 +535,26 @@ public class SolrIndexer
                 	objParms[i+1] = dequote(parms[i].trim()); 
                 }
                 method = getClass().getMethod(functionName, parmClasses);
+                returnType = method.getReturnType();
                 retval = method.invoke(this, objParms);
             }
             else 
             {
                 method = getClass().getMethod(indexParm, new Class[]{Record.class});
+                returnType = method.getReturnType();
                 retval = method.invoke(this, new Object[]{record});
             }
             
-            if (retval instanceof Map) 
+            if (returnType.isAssignableFrom(Map.class)) 
             {
+                if (retval == null)  return(indexType.equals("customDeleteRecordIfFieldEmpty"));
                 if (indexType.equals("customDeleteRecordIfFieldEmpty") && ((Map<String, String>)retval).size()== 0)
                     return(true);
-                indexMap.putAll((Map<String, String>)retval);         
+                if (retval != null) indexMap.putAll((Map<String, String>)retval);         
             }
-            else if (retval instanceof Set) 
+            else if (returnType.isAssignableFrom(Set.class)) 
             {
+                if (retval == null)  return(indexType.equals("customDeleteRecordIfFieldEmpty"));
                 Set<String> fields = (Set<String>) retval;
                 if (mapName != null && findMap(mapName) != null)
                     fields = Utils.remap(fields, findMap(mapName), true);
@@ -544,44 +563,47 @@ public class SolrIndexer
                     return(true);
                 addFields(indexMap, indexField, null, fields);
             }
-            else if (retval instanceof String)
+            else if (returnType.isAssignableFrom(String.class))
             {
+                if (retval == null)  return(indexType.equals("customDeleteRecordIfFieldEmpty"));
                 String field = (String) retval;
                 if (mapName != null && findMap(mapName) != null)
                     field = Utils.remap(field, findMap(mapName), true);
-                if (indexType.equals("customDeleteRecordIfFieldEmpty") && retval == null)
-                    return(true);
                 addField(indexMap, indexField, null, field);
             }
         }
         catch (SecurityException e)
         {
             //e.printStackTrace();
-            logger.error(e.getCause());
+            logger.error(record.getControlNumber() + " " + indexField + " " + e.getCause());
         }
         catch (NoSuchMethodException e)
         {
             //e.printStackTrace();
-            logger.error(e.getCause());
+            logger.error(record.getControlNumber() + " " + indexField + " " + e.getCause());
         }
         catch (IllegalArgumentException e)
         {
             //e.printStackTrace();
-            logger.error(e.getCause());
+            logger.error(record.getControlNumber() + " " + indexField + " " + e.getCause());
         }
         catch (IllegalAccessException e)
         {
             //e.printStackTrace();
-            logger.error(e.getCause());
+            logger.error(record.getControlNumber() + " " + indexField + " " + e.getCause());
         }
         catch (InvocationTargetException e)
         {
             //e.printStackTrace();
-            logger.error(e.getCause());
+            logger.error(record.getControlNumber() + " " + indexField + " " + e.getCause());
         }
         return(false);
     }
 
+    /**
+     * if the first and last characters of the string are quote marks ("), then
+     * delete them.
+     */
     private String dequote(String str)
     {
         if (str.length() > 2 && str.charAt(0) == '"' && str.charAt(str.length()-1) == '"')
@@ -664,6 +686,11 @@ public class SolrIndexer
         return result;
     }
 
+    /**
+     * get the two eras indicated by the four passed characters, and add them
+     *  to the result parameter (which is a set).  The characters passed in are
+     *  from the 041a.
+     */
     public static Set<String> getEra(Set<String> result, char eraStart1, char eraStart2, char eraEnd1, char eraEnd2)
     {
         if (eraStart1 >= 'a' && eraStart1 <= 'y' && eraEnd1 >= 'a' && eraEnd1 <= 'y')
@@ -685,42 +712,70 @@ public class SolrIndexer
         return result;
     }
 
-    protected void addField(Map<String, Object> indexMap, String indexField, String mapName, String fieldVal)
+    /**
+     * Add a field-value pair to the indexMap representation of a solr doc.
+     *  The value will be "translated" per the translation map indicated.
+     * @param indexMap - the mapping of solr doc field names to values
+     * @param ixFldName - the name of the field to add to the solr doc
+     * @param mapName - the name of a translation map for the field value, or null
+     * @param fieldVal - the (untranslated) field value to add to the solr doc field
+     */
+    protected void addField(Map<String, Object> indexMap, String ixFldName, String mapName, String fieldVal)
     {
         if (mapName != null && findMap(mapName) != null)
             fieldVal = Utils.remap(fieldVal, findMap(mapName), true);
 
         if (fieldVal != null && fieldVal.length() > 0)
-            indexMap.put(indexField, fieldVal);
+            indexMap.put(ixFldName, fieldVal);
     }
 
-    protected void addField(Map<String, Object> indexMap, String indexField, String fieldVal)
+    /**
+     * Add a field-value pair to the indexMap representation of a solr doc.
+     * @param indexMap - the mapping of solr doc field names to values
+     * @param ixFldName - the name of the field to add to the solr doc
+     * @param mapName - the name of a translation map for the field value, or null
+     * @param fieldVal - the (untranslated) field value to add to the solr doc field
+     */
+    protected void addField(Map<String, Object> indexMap, String ixFldName, String fieldVal)
     {
-        addField(indexMap, indexField, null, fieldVal);
+        addField(indexMap, ixFldName, null, fieldVal);
     }
 
-    protected void addFields(Map<String, Object> indexMap, String indexField, String mapName, Set<String> fields)
+    /**
+     * Add a field-value pair to the indexMap representation of a solr doc for
+     *  each value present in the "fieldVals" parameter.
+     *  The values will be "translated" per the translation map indicated.
+     * @param indexMap - the mapping of solr doc field names to values
+     * @param ixFldName - the name of the field to add to the solr doc
+     * @param mapName - the name of a translation map for the field value, or null
+     * @param fieldVals - a set of (untranslated) field values to be assigned to the solr doc field
+     */
+    protected void addFields(Map<String, Object> indexMap, String ixFldName, String mapName, Set<String> fieldVals)
     {
         if (mapName != null && findMap(mapName) != null)
-            fields = Utils.remap(fields, findMap(mapName), true);
+            fieldVals = Utils.remap(fieldVals, findMap(mapName), true);
 
-        if (!fields.isEmpty())
+        if (!fieldVals.isEmpty())
         {
-            if (fields.size() == 1)
+            if (fieldVals.size() == 1)
             {
-                String value = fields.iterator().next();
-                indexMap.put(indexField, value);
+                String value = fieldVals.iterator().next();
+                indexMap.put(ixFldName, value);
             }
             else
-                indexMap.put(indexField, fields);
+                indexMap.put(ixFldName, fieldVals);
         }
     }
 
     /**
-     * Get Set of Strings as indicated by tagStr
-     * @param record
-     * @param tagStr which field(s)/subfield(s) to use
-     * @return
+     * Get Set of Strings as indicated by tagStr.  
+     * @param record - the marc record object
+     * @param tagStr string containing which field(s)/subfield(s) to use. This 
+     *  is a series of: marc "tag" string (3 chars identifying a marc field, 
+     *  e.g. 245) optionally followed by characters identifying which subfields 
+     *  to use.
+     * @return the contents of the indicated marc field(s)/subfield(s), as a
+     *  set of Strings.
      */
     public static Set<String> getFieldList(Record record, String tagStr)
     {
@@ -763,11 +818,15 @@ public class SolrIndexer
     }
 
     /**
-     * Get all field values joined as a single string.
-     * @param record
-     * @param tagStr which field(s)/subfield(s) to use
+     * Get all field values specified by tagStr, joined as a single string.
+     * @param record - the marc record object
+     * @param tagStr string containing which field(s)/subfield(s) to use. This 
+     *  is a series of: marc "tag" string (3 chars identifying a marc field, 
+     *  e.g. 245) optionally followed by characters identifying which subfields 
+     *  to use.
      * @param separator string separating values in the result string
-     * @return single string containing all values joined with separator string
+     * @return single string containing all values of the indicated marc 
+     *  field(s)/subfield(s) concatenated with separator string
      */
     public String getFieldVals(Record record, String tagStr, String separator)
     {
@@ -776,10 +835,13 @@ public class SolrIndexer
     }
 
     /**
-     * Get the first value according to the tagStr
-     * @param record
-     * @param tagStr which field(s)/subfield(s) to use
-     * @return first value as a string
+     * Get the first value specified by the tagStr
+     * @param record - the marc record object
+     * @param tagStr string containing which field(s)/subfield(s) to use. This 
+     *  is a series of: marc "tag" string (3 chars identifying a marc field, 
+     *  e.g. 245) optionally followed by characters identifying which subfields 
+     *  to use.
+     * @return first value of the indicated marc field(s)/subfield(s) as a string
      */
     public static String getFirstFieldVal(Record record, String tagStr)
     {
@@ -792,8 +854,10 @@ public class SolrIndexer
     }
 
     /**
-     * Get the first field value, which is mapped to another value
-     * @param record
+     * Get the first field value, which is mapped to another value.  If there is
+     *  no mapping for the value, use the mapping for the empty key, if it 
+     *  exists, o.w., use the mapping for the __DEFAULT key, if it exists.
+     * @param record - the marc record object
      * @param mapName - name of translation map to use to xform values
      * @param tagStr - which field(s)/subfield(s) to use
      * @return first value as a string
@@ -808,6 +872,10 @@ public class SolrIndexer
             {
                 result.add(findMap(mapName).get(""));
             }
+            if (findMap(mapName).containsKey("__DEFAULT"))
+            {
+                result.add(findMap(mapName).get("__DEFAULT"));
+            }
         }
         Iterator<String> iter = result.iterator();
         if (iter.hasNext()) 
@@ -817,9 +885,12 @@ public class SolrIndexer
     }
 
     /**
-     * Get the title from a record
-     * @param record
-     * @return Recrod's title (245a and 245b)
+     * Get the 245a (and 245b, if it exists, concatenated with a space between
+     *  the two subfield values), with trailing punctuation removed.
+     *    See org.solrmarc.tools.Utils.cleanData() for details on the 
+     *     punctuation removal
+     * @param record - the marc record object
+     * @return 245a and 245b values concatenated, with trailing punct removed.
      */
     public String getTitle(Record record)
     {
@@ -840,8 +911,9 @@ public class SolrIndexer
     /**
      * Get the title from a record, without non-filing chars as specified
      *   in 245 2nd indicator
-     * @param record
-     * @return Recrod's title (245a and 245b)
+     * @param record - the marc record object
+     * @return 245a and 245b values concatenated, with trailing punct removed,
+     *  and with non-filing characters omitted
      */
     public String getSortableTitle(Record record)
     {
@@ -858,10 +930,13 @@ public class SolrIndexer
 
     /**
      * Return the date in 260c as a string
+     * @param record - the marc record object
+     * @return 260c, "cleaned" per org.solrmarc.tools.Uitls.cleanDate()
      */
     public String getDate(Record record)
     {
         String date = getFieldVals(record, "260c", ", ");
+        if (date == null || date.length() == 0) return(null);
         return Utils.cleanDate(date);
     }
 
@@ -876,7 +951,7 @@ public class SolrIndexer
 
     /**
      * Get the appropriate Map object from populated transMapMap 
-     * @param mapName the translation map to find
+     * @param mapName the name of the translation map to find
      * @return populated Map object
      */
     protected Map<String, String> findMap(String mapName)
@@ -890,13 +965,23 @@ public class SolrIndexer
         return null;
     }
 
+    protected static boolean isControlField(String fieldTag)
+    {
+        if (fieldTag.matches("00[0-9]"))
+        {
+            return(true);
+        }
+        return(false);
+    }
+    
     /**
      * Get the specified subfields from the specified MARC field, returned as
      *  a set of strings to become lucene document field values
-     * @param record
+     * @param record - the marc record object
      * @param fldTag - the field name, e.g. 245
      * @param subfldsStr - the string containing the desired subfields
-     * @returns the result set of strings 
+     * @returns a Set of String, where each string is the contents of all the
+     *  desired subfield values from a single instance of the fldTag 
      */
     @SuppressWarnings("unchecked")
     protected static Set<String> getSubfieldDataAsSet(Record record, String fldTag, String subfldsStr, String separator)
@@ -911,11 +996,11 @@ public class SolrIndexer
         }
         
         // Loop through Data and Control Fields
-        int iTag = new Integer(fldTag).intValue();
+        // int iTag = new Integer(fldTag).intValue();
         List<VariableField> varFlds = record.getVariableFields(fldTag);
         for (VariableField vf : varFlds)
         {
-            if (iTag > 9 && subfldsStr != null) 
+            if (!isControlField(fldTag) && subfldsStr != null) 
             {
                 // DataField
                 DataField dfield = (DataField) vf;
@@ -957,9 +1042,9 @@ public class SolrIndexer
     }
 
     /**
-     * Get the specified substring of subfield values from the specified MARC field, returned as
-     *  a set of strings to become lucene document field values
-     * @param record
+     * Get the specified substring of subfield values from the specified MARC 
+     * field, returned as  a set of strings to become lucene document field values
+     * @param record - the marc record object
      * @param fldTag - the field name, e.g. 245
      * @param subfldsStr - the string containing the desired subfields
      * @param beginIx - the beginning index of the substring of the subfield value
@@ -979,11 +1064,11 @@ public class SolrIndexer
         }
         
         // Loop through Data and Control Fields
-        int iTag = new Integer(fldTag).intValue();
+        //int iTag = new Integer(fldTag).intValue();
         List<VariableField> varFlds = record.getVariableFields(fldTag);
         for (VariableField vf : varFlds) 
         {
-            if (iTag > 9 && subfield != null) 
+            if (!isControlField(fldTag) && subfield != null) 
             {
                 // Data Field
                 DataField dfield = (DataField) vf;
@@ -1026,9 +1111,10 @@ public class SolrIndexer
     }
 
     /**
-     * Write a marc record as a binary string
-     * @param record record to write
-     * @return Binary marc output
+     * Write a marc record as a binary string to the 
+     * @param record marc record object to be written
+     * @return string containing binary (UTF-8 encoded) representation of marc 
+     *  record object.
      */
     protected String writeRaw(Record record)
     {
@@ -1051,9 +1137,9 @@ public class SolrIndexer
     }
 
     /**
-     * Write a MarcXML formated file to index
-     * @param record record to output as XML
-     * @return String of MarcXML
+     * Write a marc record as a string containing MarcXML 
+     * @param record marc record object to be written
+     * @return String containing MarcXML representation of marc record object
      */
     protected String writeXml(Record record)
     {
@@ -1079,7 +1165,9 @@ public class SolrIndexer
     
     /**
      * remove trailing punctuation (default trailing characters to be removed)
-     * @param record
+     *    See org.solrmarc.tools.Utils.cleanData() for details on the 
+     *     punctuation removal
+     * @param record marc record object
      * @param fieldSpec - the field to have trailing punctuation removed
      * @return Set of strings containing the field values with trailing 
      *   punctuation removed
@@ -1096,35 +1184,37 @@ public class SolrIndexer
     }
     
     /**
-     * extract all the subfields in a given marc field
-     * @param record
-     * @param marcFieldNum - the marc field number as a string (e.g. "245")
-     * @return
+     * extract all the subfields requested in requested marc fields.  Each 
+     * instance of each marc field will be put in a separate result.
+     * @param record marc record object
+     * @param fieldSpec - the desired marc fields and subfields as given in 
+     *   the xxx_index.properties file
+     * @param separator - the character to use between subfield values in the 
+     *   solr field contents
+     * @return Set of values (as strings) for solr field
      */
     public Set<String> getAllSubfields(final Record record, String fieldSpec, String separator)
     {
         Set<String> result = new LinkedHashSet<String>();
 
-        String[] tags = fieldSpec.split(":");
-        for (int i = 0; i < tags.length; i++)
+        String[] fldTags = fieldSpec.split(":");
+        for (int i = 0; i < fldTags.length; i++)
         {
             // Check to ensure tag length is at least 3 characters
-            if (tags[i].length() < 3)
+            if (fldTags[i].length() < 3)
             {
-                System.err.println("Invalid tag specified: " + tags[i]);
+                System.err.println("Invalid tag specified: " + fldTags[i]);
                 continue;
             }
             
-            // Get Field Tag
-            String tag = tags[i].substring(0, 3);
+            String fldTag = fldTags[i].substring(0, 3);
 
-            // Process Subfields
-            String subfieldtags = tags[i].substring(3);
+            String subfldTags = fldTags[i].substring(3);
 
-            List<?> marcFieldList =  record.getVariableFields(tag);
+            List<?> marcFieldList =  record.getVariableFields(fldTag);
             if (!marcFieldList.isEmpty()) 
             {
-                Pattern subfieldPattern = Pattern.compile(subfieldtags.length() == 0 ? "." : subfieldtags);
+                Pattern subfieldPattern = Pattern.compile(subfldTags.length() == 0 ? "." : subfldTags);
                 Iterator<?> fieldIter = marcFieldList.iterator();
                 while (fieldIter.hasNext())
                 {
@@ -1156,17 +1246,177 @@ public class SolrIndexer
         return result;
     }
     
+	/**
+     * For each occurrence of a marc field in the fieldSpec list, extract the
+     * contents of all alphabetical subfields, concatenate them with a space 
+     * separator and add the string to the result set.  Each instance of 
+     * each marc field will be put in a separate result.
+     * @param record - the marc record
+     * @param fieldSpec - the marc fields (e.g. 600:655) in which we will grab
+     *  the alphabetic subfield contents for the result set.  The field may not
+     *  be a control field (must be 010 or greater)
+     * @param multOccurs - "first", "join" or "all" indicating how to handle
+     *  multiple occurrences of field values
+     * @return a set of strings, where each string is the concatenated values
+     *  of all the alphabetic subfields.
+     */
+    @SuppressWarnings("unchecked")
+	public Set<String> getAllAlphaSubfields(final Record record, String fieldSpec) 
+    {
+		Set<String> resultSet = new LinkedHashSet<String>();
+
+		String[] fldTags = fieldSpec.split(":");
+        for (int i = 0; i < fldTags.length; i++)
+        {
+        	String fldTag = fldTags[i];
+            if (fldTag.length() < 3 || Integer.parseInt(fldTag) < 10 )
+            {
+                System.err.println("Invalid marc field specified for getAllAlphaSubfields: " + fldTag);
+                continue;
+            }
+
+	        List<VariableField> varFlds = record.getVariableFields(fldTag);
+	        for (VariableField vf : varFlds) {
+	        	
+	            StringBuffer buffer = new StringBuffer(500);
+	
+	            DataField df = (DataField) vf;
+	    		if (df != null) {
+	    			List<Subfield> subfields = df.getSubfields();
+	    	        for (Subfield sf : subfields) {
+	    	        	if (Character.isLetter(sf.getCode()))
+	    	        	{
+	                        if (buffer.length() > 0) {
+	                            buffer.append(" " + sf.getData());
+	                        } else {
+	                            buffer.append(sf.getData());
+	        				}
+	    	        	}
+	    	        }
+	    		}
+	    		if (buffer.length() > 0)
+	                resultSet.add(buffer.toString());
+	        }
+        }
+
+        return resultSet;
+    }
+
+	/**
+     * For each occurrence of a marc field in the fieldSpec list, extract the
+     * contents of all alphabetical subfields, concatenate them with a space 
+     * separator and add the string to the result set, handling multiple 
+     * occurrences as indicated 
+     * @param record - the marc record
+     * @param fieldSpec - the marc fields (e.g. 600:655) in which we will grab
+     *  the alphabetic subfield contents for the result set.  The field may not
+     *  be a control field (must be 010 or greater)
+     * @param multOccurs - "first", "join" or "all" indicating how to handle
+     *  multiple occurrences of field values
+     * @return a set of strings, where each string is the concatenated values
+     *  of all the alphabetic subfields.
+     */
+	@SuppressWarnings("unchecked")
+	public final Set<String> getAllAlphaSubfields(final Record record, String fieldSpec, String multOccurs) 
+	{
+        Set<String> result = getAllAlphaSubfields(record, fieldSpec);
+        
+        if (multOccurs.equals("first")) {
+        	Set<String> first = new HashSet<String>();
+        	for (String r : result) {
+        		first.add(r);
+        		return first;
+        	}
+        } else if (multOccurs.equals("join")) {
+        	StringBuffer resultBuf = new StringBuffer(); 
+        	for (String r : result) {
+        		if (resultBuf.length() > 0)
+        			resultBuf.append(' ');
+        		resultBuf.append(r);
+        	}
+        	Set<String> resultAsSet = new HashSet<String>();
+        	resultAsSet.add(resultBuf.toString());
+        	return resultAsSet;
+        }
+        // "all" is default
+        
+        return result;
+	}
+
+
+	/**
+     * For each occurrence of a marc field in the fieldSpec list, extract the
+     * contents of all subfields except the ones specified, concatenate the 
+     * subfield contents with a space separator and add the string to the result
+     * set.
+     * @param record - the marc record
+     * @param fieldSpec - the marc fields (e.g. 600:655) in which we will grab
+     *  the alphabetic subfield contents for the result set.  The field may not
+     *  be a control field (must be 010 or greater)
+     * @return a set of strings, where each string is the concatenated values
+     *  of all the alphabetic subfields.
+     */
+    @SuppressWarnings("unchecked")
+	public Set<String> getAllAlphaExcept(final Record record, String fieldSpec) 
+    {
+		Set<String> resultSet = new LinkedHashSet<String>();
+		String[] fldTags = fieldSpec.split(":");
+        for (int i = 0; i < fldTags.length; i++)
+        {
+        	String fldTag = fldTags[i].substring(0, 3);
+            if (fldTag.length() < 3 || Integer.parseInt(fldTag) < 10 )
+            {
+                System.err.println("Invalid marc field specified for getAllAlphaExcept: " + fldTag);
+                continue;
+            }
+
+            String tabooSubfldTags = fldTags[i].substring(3);
+
+            List<VariableField> varFlds = record.getVariableFields(fldTag);
+            for (VariableField vf : varFlds) {
+            	
+                StringBuffer buffer = new StringBuffer(500);
+                DataField df = (DataField) vf;
+        		if (df != null) {
+                
+                    List<Subfield> subfields = df.getSubfields();
+                    
+                    for (Subfield sf: subfields) {
+                        if (Character.isLetter(sf.getCode()) &&
+                        		tabooSubfldTags.indexOf(sf.getCode()) == -1)
+                        {
+                            if (buffer.length() > 0)  
+                            	buffer.append(' ' + sf.getData());
+                            else
+                            	buffer.append(sf.getData());
+                        }
+                    }
+                    if (buffer.length() > 0) 
+                    	resultSet.add(buffer.toString());
+            	}
+            }
+        }
+
+        return resultSet;
+    }
+	
+	
     /**
-     * Extract the info from an 880 linked field from a record
-     * @param record
-     * @return linked field
+     * Given a fieldSpec, get any linked 880 fields and include the appropriate
+     *  subfields as a String value in the result set. 
+     * 
+     * @param record marc record object
+     * @param fieldSpec - the marc field(s)/subfield(s) for which 880s are
+     *  sought
+     * @return set of Strings containing the values of the designated 880
+     *  field(s)/subfield(s)
      */
     public Set<String> getLinkedField(final Record record, String fieldSpec)
     {
         Set<String> set = getFieldList(record,"8806");
         
         if (set.isEmpty())
-            return null;
+            return set;
         
         String[] tags = fieldSpec.split(":");
         Set<String> result = new LinkedHashSet<String>();
@@ -1212,9 +1462,12 @@ public class SolrIndexer
     }
 
     /**
-     * Extract the info from an 880 linked field from a record
-     * @param record
-     * @return linked field
+     * Given a fieldSpec, get the field(s)/subfield(s) values, PLUS any linked 
+     *  880 fields and return these values as a set.
+     * @param record marc record object
+     * @param fieldSpec - the marc field(s)/subfield(s) 
+     * @return set of Strings containing the values of the indicated field(s)/
+     *  subfields(s) plus linked 880 field(s)/subfield(s)
      */
     public Set<String> getLinkedFieldCombined(final Record record, String fieldSpec)
     {
@@ -1226,6 +1479,11 @@ public class SolrIndexer
         return result2;
     }
     
+    /**
+     * return an int for the passed string
+     * @param str 
+     * @param defValue - default value, if string doesn't parse into int
+     */
     private int localParseInt(String str, int defValue)
     {
         int value = defValue;
@@ -1244,7 +1502,14 @@ public class SolrIndexer
      * Loops through all datafields and creates a field for "all fields"
      * searching.  Shameless stolen from Vufind Indexer Custom Code
      *
-     * @param record Marc record to extract data from
+     * @param record marc record object
+     * @param lowerBoundStr - the "lowest" marc field to include (e.g. 100).
+     *   defaults to 100 if value passed doesn't parse as an integer
+     * @param upperBoundStr - one more than the "highest" marc field to include
+     *   (e.g. 900 will include up to 899). Defaults to 900 if value passed 
+     *   doesn't parse as an integer
+     * @return a string containing ALL subfields of ALL marc fields within the
+     *   range indicated by the bound string arguments.
      */
     public String getAllSearchableFields(final Record record, String lowerBoundStr, String upperBoundStr)
     {
@@ -1271,5 +1536,41 @@ public class SolrIndexer
          }
         return buffer.toString();
     }
-
+    
+    public String getSingleIndexEntry(final Record record, String fieldSpec, String flagExtraEntries)
+    {
+        Set<String> set = getFieldList(record, fieldSpec);
+        if (set.size() == 0)
+        {
+            return(null);
+        }
+        else if (set.size() == 1)
+        {
+            return(set.toArray(new String[0])[0]);
+        }
+        else 
+        {
+            String longest = "";
+            for (String item : set)
+            {
+                if (item.length() > longest.length())
+                {
+                    longest = item;
+                }
+            }
+            if (flagExtraEntries.equalsIgnoreCase("true") && errors != null)
+            {
+                for (String item : set)
+                {
+                    if (!item.equals(longest))
+                    {
+                        errors.addError(record.getControlNumber(), fieldSpec.substring(0,3), fieldSpec.substring(3), 
+                                        ErrorHandler.MINOR_ERROR, "Multiple fields found for Field that expects only one occurance");
+                    }
+                }
+            }
+            return(longest);
+        }
+    }
+    
 }

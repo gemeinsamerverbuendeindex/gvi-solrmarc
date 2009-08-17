@@ -18,10 +18,12 @@ package org.solrmarc.marc;
 
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.regex.PatternSyntaxException;
 
 import org.apache.log4j.*;
@@ -29,6 +31,7 @@ import org.marc4j.ErrorHandler;
 import org.marc4j.marc.Record;
 import org.solrmarc.solr.SolrCoreProxy;
 import org.solrmarc.solr.SolrCoreLoader;
+import org.solrmarc.solr.SolrRuntimeException;
 import org.solrmarc.tools.SolrUpdate;
 import org.solrmarc.tools.Utils;
 
@@ -45,6 +48,7 @@ public class MarcImporter extends MarcHandler
 
     protected String solrCoreDir;
     protected String solrDataDir;
+    protected String solrCoreName;
     private String deleteRecordListFilename;
     private String deleteRecordIDMapper = null;
     private String SolrHostURL;
@@ -86,9 +90,29 @@ public class MarcImporter extends MarcHandler
         // The solr data diretory to use
         solrDataDir = Utils.getProperty(props, "solr.data.dir");
 
+        // The name of the solr core to use, in a solr multicore environment
+        solrCoreName = Utils.getProperty(props, "solr.core.name");
+        
         // Ths URL of the currently running Solr server
         SolrHostURL = Utils.getProperty(props, "solr.hosturl");
         
+        String solrLogLevel = Utils.getProperty(props, "solr.log.level");
+        
+        Level level = Level.WARNING;
+        if (solrLogLevel != null)
+        {
+            if (solrLogLevel.equals("OFF"))     level = Level.OFF;
+            if (solrLogLevel.equals("SEVERE"))  level = Level.SEVERE;
+            if (solrLogLevel.equals("WARNING")) level = Level.WARNING;
+            if (solrLogLevel.equals("INFO"))    level = Level.INFO;
+            if (solrLogLevel.equals("FINE"))    level = Level.FINE;
+            if (solrLogLevel.equals("FINER"))   level = Level.FINER;
+            if (solrLogLevel.equals("FINEST"))  level = Level.FINEST;
+            if (solrLogLevel.equals("ALL"))     level = Level.ALL;
+        }
+        
+        java.util.logging.Logger.getLogger("org.apache.solr").setLevel(level);
+
         // Specification of how to modify the entries in the delete record file
         // before passing the id onto Solr.   Based on syntax of String.replaceAll
         //  To prepend a 'u' specify the following:  "(.*)->u$1"
@@ -119,6 +143,8 @@ public class MarcImporter extends MarcHandler
         }
         
         justIndexDontAdd = Boolean.parseBoolean(Utils.getProperty(props, "marc.just_index_dont_add"));
+        if (justIndexDontAdd)
+            Utils.setLog4jLogLevel(org.apache.log4j.Level.WARN);
         deleteRecordListFilename = Utils.getProperty(props, "marc.ids_to_delete");
         optimizeAtEnd = Boolean.parseBoolean(Utils.getProperty(props, "solr.optimize_at_end"));
         return;
@@ -196,39 +222,72 @@ public class MarcImporter extends MarcHandler
         {
             if (shuttingDown) break;
             
+            Record record = null;
             try {
-                Record record = reader.next();
+                record = reader.next();
                 recsReadCounter++;
-                
-                try {
-                    boolean added = addToIndex(record);
-                    if (added)
-                    {
-                        recsIndexedCounter++;
-                        logger.info("Added record " + recsReadCounter + " read from file: " + record.getControlNumber());
-                    }
-                    else
-                    {
-                        logger.info("Deleted record " + recsReadCounter + " read from file: " + record.getControlNumber());                        
-                    }
-                }
-                catch (Exception e)
-                {
-                    // check for missing fields
-                    if (solrCoreProxy.isSolrException(e) &&
-                    		e.getMessage().contains("missing required fields"))
-                    {
-                   	   logger.error(e.getMessage() +  " at record count = " + recsReadCounter);
-                   	   logger.error("Control Number " + record.getControlNumber(), e);
-                    }
-                    else
-                    {
-                	    logger.error("Error indexing record: " + record.getControlNumber() + " -- " + e.getMessage(), e);
-                    }
-                }
-            } 
-            catch (Exception e) {
+            }
+            catch (Exception e) 
+            {
                 logger.error("Error reading record: " + e.getMessage(), e);
+                continue;
+            }
+                
+            try {
+                boolean added = addToIndex(record);
+                if (added)
+                {
+                    recsIndexedCounter++;
+                    logger.info("Added record " + recsReadCounter + " read from file: " + record.getControlNumber());
+                }
+                else
+                {
+                    logger.info("Deleted record " + recsReadCounter + " read from file: " + record.getControlNumber());                        
+                }
+            }
+            catch (Exception e)
+            {
+                Throwable cause = null;
+                if (e instanceof SolrRuntimeException) 
+                {
+                    cause = e.getCause();
+                }
+                if (cause != null && cause instanceof InvocationTargetException)
+                {
+                    cause = ((InvocationTargetException)cause).getTargetException();
+                }
+                if (cause instanceof Exception && solrCoreProxy.isSolrException((Exception)cause) &&
+                        cause.getMessage().contains("missing required fields"))
+                {
+                   // this is caused by a bad record - one missing required fields (duh)
+                   logger.error(cause.getMessage() +  " at record count = " + recsReadCounter);
+                   logger.error("Control Number " + record.getControlNumber());
+                }
+                else if (cause instanceof Exception && solrCoreProxy.isSolrException((Exception)cause) &&
+                        cause.getMessage().contains("multiple values encountered for non multiValued field"))
+                {
+                   logger.error(cause.getMessage() +  " at record count = " + recsReadCounter);
+                   logger.error("Control Number " + record.getControlNumber());
+                }
+                else if (cause instanceof Exception && solrCoreProxy.isSolrException((Exception)cause) &&
+                        cause.getMessage().contains("unknown field"))
+                {
+                   logger.error(cause.getMessage() +  " at record count = " + recsReadCounter);
+                   logger.error("Control Number " + record.getControlNumber());
+                }
+                else if (cause instanceof Exception && solrCoreProxy.isSolrException((Exception)cause) )
+                {
+                    logger.error("Error indexing record: " + record.getControlNumber() + " -- " + cause.getMessage());
+                    if (e instanceof SolrRuntimeException) throw (new SolrRuntimeException(cause.getMessage(), (Exception)cause));
+                }
+                else
+                {
+            	    logger.error("Error indexing record: " + record.getControlNumber() + " -- " + e.getMessage(), e);
+            	    // this error should (might?) only be thrown if we can't write to the index
+            	    //   therefore, continuing to index would be pointless.
+            	    if (e instanceof SolrRuntimeException) throw ((SolrRuntimeException)e);
+
+                }
             }
         }
         
@@ -242,7 +301,7 @@ public class MarcImporter extends MarcHandler
     private boolean addToIndex(Record record)
     	throws IOException
     {
-        Map<String, Object> fieldsMap = indexer.map(record); 
+        Map<String, Object> fieldsMap = indexer.map(record, errors); 
         // test whether some indexing specification determined that this record should be omitted entirely
         if (fieldsMap.size() == 0) 
         {
@@ -344,12 +403,12 @@ public class MarcImporter extends MarcHandler
         catch (MalformedURLException me)
         {
             //System.err.println("MalformedURLException: " + me);
-        	logger.error("MalformedURLException" + me);
+        	logger.error("Specified URL is malformed: " + SolrHostURL);
         }
         catch (IOException ioe)
         {
             //System.err.println("IOException: " + ioe.getMessage());
-        	logger.error("IOException: " + ioe.getMessage());
+        	logger.warn("Unable to establish connection to solr server at URL: " + SolrHostURL);
         }
     }  
 
@@ -418,15 +477,17 @@ public class MarcImporter extends MarcHandler
         }
         catch (Exception e)
         {
-            logger.info("Exception occurred while Indexing: "+ e.getMessage());           
+            logger.info("Exception occurred while Indexing: "+ e.getMessage());
+            logger.info("Setting Solr closed flag");
+            isShutDown = true;
         }
         
         logger.info(" Adding " + recsIndexedCounter + " of " + recsReadCounter + " documents to index");
         logger.info(" Deleting " + recsDeletedCounter + " documents from index");
 
-        finish();
+        if (!isShutDown) finish();
 
-        signalServer();
+        if (!justIndexDontAdd) signalServer();
         
         Date end = new Date();
         long totalTime = end.getTime() - start.getTime();
@@ -450,7 +511,28 @@ public class MarcImporter extends MarcHandler
     {
         if (solrCoreProxy == null)
         {
-            solrCoreProxy = SolrCoreLoader.loadCore(solrCoreDir, solrDataDir, null, logger);
+            if (solrCoreDir.equals("@SOLR_PATH@") )
+            {
+                System.err.println("Error: Solr home directory not initialized, please run setsolrhome") ;
+                logger.error("Error: Solr home directory not initialized, please run setsolrhome") ;
+                System.exit(1);               
+            }
+            File solrcoretest = new File(solrCoreDir);
+            if (!solrcoretest.exists() || !solrcoretest.isDirectory() )
+            {
+                System.err.println("Error: Supplied Solr home directory does not exist: "+ solrCoreDir) ;
+                logger.error("Error: Supplied Solr home directory does not exist: "+ solrCoreDir) ;
+                System.exit(1);               
+            }
+            File solrcoretest1 = new File(solrCoreDir, "solr.xml");
+            File solrcoretest2 = new File(solrCoreDir, "conf");
+            if (!solrcoretest1.exists() &&  !solrcoretest2.exists() )
+            {
+                System.err.println("Error: Supplied Solr home directory does not contain proper solr configuration: "+ solrCoreDir) ;
+                logger.error("Error: Supplied Solr home directory does not contain proper solr configuration: "+ solrCoreDir) ;
+                System.exit(1);               
+            }
+            solrCoreProxy = SolrCoreLoader.loadCore(solrCoreDir, solrDataDir, solrCoreName, logger);
         }
         return(solrCoreProxy);
     }

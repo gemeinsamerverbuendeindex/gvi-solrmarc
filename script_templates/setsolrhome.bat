@@ -28,25 +28,20 @@ set defconfig=
 
 java -Done-jar.main.class="org.solrmarc.tools.GetDefaultConfig" -jar "%jar%" > %tmp%\_tmpdefconfig
 
-set /p defconfig= < %tmp%\_tmpdefconfig
+set /p defconfig=< %tmp%\_tmpdefconfig
 
 del /q %tmp%\_tmpdefconfig
 
 if "%config%" == "" if %jar% NEQ "" @set config=%defconfig%
 
-pushd %tmp%
-jar xf %jar% %config% 
-popd
-
 if "%solrpath%" NEQ "" goto :hiturl 
 if "%url%" NEQ "" goto :hiturl
-    for /f "usebackq delims=" %%a in (`type %tmp%\%config% ^| findstr "^solr\.path" `) do set solrpathline=%%a
-    for /f "usebackq delims=" %%g in (`type %tmp%\%config% ^| findstr "^solr\.hosturl"`) do set urlline=%%g
+    for /f "usebackq delims=" %%a in (`%scriptdir%showconfig %jar% %config% ^| findstr "^solr\.path" `) do set solrpathline=%%a
+    for /f "usebackq delims=" %%g in (`%scriptdir%showconfig %jar% %config% ^| findstr "^solr\.hosturl"`) do set urlline=%%g
     echo jar = %jar%
     echo config = %config%
     echo solrpath = %solrpathline:~12%
     echo url = %urlline:~15%
-    del "%tmp%\%config%"
     goto :done
 
 
@@ -82,11 +77,13 @@ if "%url%" == "" goto :dont_hit_url
         goto :done
 	)
 
-	if NOT EXIST %solrpath%/conf (
-	    echo "Error: no 'conf' directory in directory designated as Solr home: %solrpath%"
+	if EXIST %solrpath%/conf goto solrpathok
+	if NOT EXIST %solrpath%/solr.xml (
+	    echo "Error: neither a 'conf' directory nor a 'solr.xml' file in directory designated as Solr home: %solrpath%"
         goto :done
 	)
 
+:solrpathok
 echo jar = %jar%
 echo config = %config%
 echo solrpath = %solrpath%
@@ -96,39 +93,20 @@ set solrpathdef=solr.path=%solrpath%
 set urldef=
 if "%url%" NEQ "" set urldef=solr.hosturl=%url%/update
 
-java -Done-jar.main.class="org.solrmarc.tools.ConfigDisplayer" -jar %jar% %config% "%solrpathdef%" "%urldef%" > %tmp%\%config%
+java -Done-jar.main.class="org.solrmarc.tools.PropertyFileFetcher" -jar %jar% %config% | java -Done-jar.main.class="org.solrmarc.tools.PropertyFileEditor" -jar %jar% "%solrpathdef%" "%urldef%" > %tmp%\%config%
 
 pushd %tmp%
 
-type %tmp%\%config%
-
-jar uf %jar% %config%
+::jar uf "%jar%" %config%
+java -Done-jar.main.class="org.solrmarc.tools.PropertyFileFetcher" -jar "%jar%" JarUtils.jar %scriptdir%
+java -classpath %scriptdir%JarUtils.jar JarUpdate "%jar%" %config% > NUL
+del /q %scriptdir%JarUtils.jar
 
 del /q %config%
 
 popd
 
 GOTO :done
-
-
-:output_line 
-
-set _line1=%1
-set _line2=%_line1:~1%
-set _line=%_line2:~0,-1%
-set _configtmp=%2
-set _solrpath=%3
-set _url=%4
-
-set _line9=%_line:~0,9%
-set _line12=%_line:~0,12%
-
-if "%_line9%" NEQ "solr.path" if "%_line12%" NEQ "solr.hosturl" echo %_line% >> %_configtmp%
-if "%_line12%" == "solr.hosturl" if "%_url%" == "" echo %_line% >> %_configtmp%
-if "%_line12%" == "solr.hosturl" if "%_url%" NEQ "" echo solr.hosturl = %_url% >> %_configtmp%
-if "%_line9%" == "solr.path"  echo solr.path = %_solrpath% >> %_configtmp%
-
-goto :eof
 
 :set_arg
 
@@ -138,6 +116,7 @@ if "%arg:~-17%" == "config.properties" set config=%arg%
 if "%arg:~-4%" == ".jar" set jar=%arg%
 if "%arg:~-4%" NEQ ".jar" if "%arg:~1,2%" == ":/" set solrpath=%arg%
 if "%arg:~-4%" NEQ ".jar" if "%arg:~1,2%" == ":\" set solrpath=%arg%
+if "%arg:~-4%" NEQ ".jar" if "%arg:~0,1%" == "." for %%g in (%arg%) do set solrpath=%%~fg
 
 goto :eof
 

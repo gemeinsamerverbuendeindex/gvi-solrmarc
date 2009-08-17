@@ -30,6 +30,7 @@ public abstract class MarcHandler {
 	protected boolean permissiveReader;
 	protected String defaultEncoding;
     protected boolean to_utf_8;
+    protected String combineConsecutiveRecordsFields = null;
 	
 	private String solrmarcPath;
 	private String siteSpecificPath;
@@ -53,7 +54,7 @@ public abstract class MarcHandler {
                 {
                     configProperties = arg;
                 }
-                else if (arg.endsWith(".mrc"))
+                else if (arg.endsWith(".mrc") || arg.endsWith("marc"))
                 {
                     System.setProperty("marc.path", arg);
                     System.setProperty("marc.source", "FILE");
@@ -92,12 +93,12 @@ public abstract class MarcHandler {
 	}
 		
 	/**
-	 * Load the properties file and initials class variables
+	 * Load the properties file and initialize class variables
 	 * @param configProperties _config.properties file
 	 */
 	public void loadProperties(String configProperties)
 	{
-	    configProps = Utils.loadProperties(null, configProperties);
+	    configProps = Utils.loadProperties(new String[]{"."}, configProperties);
 
         solrmarcPath = Utils.getProperty(configProps, "solrmarc.path");
 
@@ -109,7 +110,10 @@ public abstract class MarcHandler {
         // _index.properties file
         indexerProps = Utils.getProperty(configProps, "solr.indexer.properties");
 
-
+        combineConsecutiveRecordsFields = Utils.getProperty(configProps, "marc.combine_records");
+        if (combineConsecutiveRecordsFields != null && combineConsecutiveRecordsFields.length() == 0) 
+            combineConsecutiveRecordsFields = null;
+        
         permissiveReader = Boolean.parseBoolean(Utils.getProperty(configProps, "marc.permissive"));
         if (Utils.getProperty(configProps, "marc.default_encoding") != null)
         {
@@ -191,6 +195,10 @@ public abstract class MarcHandler {
         {
         	logger.warn("Error: Z3950 not yet implemented");
             reader = null;
+        }
+        if (combineConsecutiveRecordsFields != null)
+        {
+            reader = new MarcCombiningReader(reader, combineConsecutiveRecordsFields);
         }
         String marcIncludeIfPresent = Utils.getProperty(configProps, "marc.include_if_present");
         String marcIncludeIfMissing = Utils.getProperty(configProps, "marc.include_if_missing");

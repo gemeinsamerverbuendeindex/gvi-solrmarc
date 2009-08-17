@@ -23,7 +23,11 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.log4j.Appender;
+import org.apache.log4j.AsyncAppender;
+import org.apache.log4j.Logger;
 import org.marc4j.marc.*;
+import org.solrmarc.marc.MarcImporter;
 
 /**
  * General utility functions for solrmarc
@@ -34,10 +38,26 @@ import org.marc4j.marc.*;
 
 public final class Utils {
 	
-	private final static Pattern FOUR_DIGIT_PATTERN = Pattern.compile("\\d{1,4}");
-	private static Matcher matcher;
+    private final static Pattern FOUR_DIGIT_PATTERN_BRACES = Pattern.compile("\\[[12]\\d{3,3}\\]");
+    private final static Pattern FOUR_DIGIT_PATTERN_ONE_BRACE = Pattern.compile("\\[[12]\\d{3,3}");
+    private final static Pattern FOUR_DIGIT_PATTERN_STARTING_WITH_1_2 = Pattern.compile("(200|1[98765][0-9])[0-9]");
+    private final static Pattern FOUR_DIGIT_PATTERN_OTHER_1 = Pattern.compile("l\\d{3,3}");
+    private final static Pattern FOUR_DIGIT_PATTERN_OTHER_2 = Pattern.compile("\\[19\\]\\d{2,2}");
+    private final static Pattern FOUR_DIGIT_PATTERN_OTHER_3 = Pattern.compile("(200|1[98765][0-9])[-?0-9]");
+    private final static Pattern FOUR_DIGIT_PATTERN_OTHER_4 = Pattern.compile("i.e. (200|1[98765][0-9])[0-9]");
+    private final static Pattern BC_DATE_PATTERN = Pattern.compile("[0-9]+ [Bb][.]?[Cc][.]?");
+    private final static Pattern FOUR_DIGIT_PATTERN = Pattern.compile("\\d{4,4}");
+    private static Matcher matcher;
+    private static Matcher matcher_braces;
+    private static Matcher matcher_one_brace;
+    private static Matcher matcher_start_with_1_2;
+    private static Matcher matcher_l_plus_three_digits;
+    private static Matcher matcher_bracket_19_plus_two_digits;
+    private static Matcher matcher_ie_date;
+    private static Matcher matcher_bc_date;
+    private static Matcher matcher_three_digits_plus_unk;
 	private final static DecimalFormat timeFormat = new DecimalFormat("00.00");
-	
+    protected static Logger logger = Logger.getLogger(Utils.class.getName());	
 	/**
 	 * Default Constructor
 	 * It's private, so it can't be instantiated by other objects
@@ -110,29 +130,32 @@ public final class Utils {
 	{
         InputStream in = null;
         // look for properties file in paths
-        File propertyFile = new File(propertyFileName);
-        int pathCnt = 0;
-        do 
+        if (propertyPaths != null)
         {
-            if (propertyFile.exists() && propertyFile.isFile() && propertyFile.canRead())
+            File propertyFile = new File(propertyFileName);
+
+            int pathCnt = 0;
+            do 
             {
-                try
+                if (propertyFile.exists() && propertyFile.isFile() && propertyFile.canRead())
                 {
-                    in = new FileInputStream(propertyFile);
+                    try
+                    {
+                        in = new FileInputStream(propertyFile);
+                    }
+                    catch (FileNotFoundException e)
+                    {
+                        // simply eat this exception since we should only try to open the file if we previously
+                        // determined that the file exists and is readable. 
+                    }
+                    break;   // we found it!
                 }
-                catch (FileNotFoundException e)
+                if (propertyPaths != null && pathCnt < propertyPaths.length)
                 {
-                    // simply eat this exception since we should only try to open the file if we previously
-                    // determined that the file exists and is readable. 
+                    propertyFile = new File(propertyPaths[pathCnt++], propertyFileName);
                 }
-                break;   // we found it!
-            }
-            if (propertyPaths != null && pathCnt < propertyPaths.length)
-            {
-                propertyFile = new File(propertyPaths[pathCnt++], propertyFileName);
-            }
-        } while (propertyPaths != null && pathCnt < propertyPaths.length);
-        
+            } while (propertyPaths != null && pathCnt <= propertyPaths.length);
+        }
         // if we didn't find it as a file, look for it as a URL
         String errmsg = "Fatal error: Unable to find specified properties file: " + propertyFileName;
         if (in == null)
@@ -173,14 +196,76 @@ public final class Utils {
 	 */
 	public static String cleanDate(final String date)
 	{
-		matcher = FOUR_DIGIT_PATTERN.matcher(date);
-		
+        matcher_braces = FOUR_DIGIT_PATTERN_BRACES.matcher(date);
+        matcher_one_brace = FOUR_DIGIT_PATTERN_ONE_BRACE.matcher(date);
+        matcher_start_with_1_2 = FOUR_DIGIT_PATTERN_STARTING_WITH_1_2.matcher(date);
+        matcher_l_plus_three_digits = FOUR_DIGIT_PATTERN_OTHER_1.matcher(date);
+        matcher_bracket_19_plus_two_digits = FOUR_DIGIT_PATTERN_OTHER_2.matcher(date);
+        matcher_three_digits_plus_unk = FOUR_DIGIT_PATTERN_OTHER_3.matcher(date);
+        matcher_ie_date = FOUR_DIGIT_PATTERN_OTHER_4.matcher(date);
+        matcher = FOUR_DIGIT_PATTERN.matcher(date);
+        matcher_bc_date = BC_DATE_PATTERN.matcher(date);
+        
 		String cleanDate = null; // raises DD-anomaly
 		
-		if(matcher.find()){	
-			cleanDate = matcher.group();
-		} 
-		
+        if(matcher_braces.find())
+        {   
+            cleanDate = matcher_braces.group();
+            cleanDate = Utils.removeOuterBrackets(cleanDate);
+            if (matcher.find())
+            {
+                String tmp = matcher.group();
+                if (!tmp.equals(cleanDate))
+                {
+                    tmp = "" + tmp;
+                }
+            }
+        } 
+        else if (matcher_ie_date.find())
+        {
+            cleanDate = matcher_ie_date.group().replaceAll("i.e. ", "");
+        }
+        else if(matcher_one_brace.find())
+        {   
+            cleanDate = matcher_one_brace.group();
+            cleanDate = Utils.removeOuterBrackets(cleanDate);
+            if (matcher.find())
+            {
+                String tmp = matcher.group();
+                if (!tmp.equals(cleanDate))
+                {
+                    tmp = "" + tmp;
+                }
+            }
+        }
+        else if(matcher_bc_date.find())
+        {   
+            cleanDate = null;
+        } 
+        else if(matcher_start_with_1_2.find())
+        {   
+            cleanDate = matcher_start_with_1_2.group();
+        } 
+        else if(matcher_l_plus_three_digits.find())
+        {   
+            cleanDate = matcher_l_plus_three_digits.group().replaceAll("l", "1");
+        } 
+        else if(matcher_bracket_19_plus_two_digits.find())
+        {   
+            cleanDate = matcher_bracket_19_plus_two_digits.group().replaceAll("\\[", "").replaceAll("\\]", "");
+        } 
+        else if(matcher_three_digits_plus_unk.find())
+        {   
+            cleanDate = matcher_three_digits_plus_unk.group().replaceAll("[-?]", "0");
+        } 
+		if (cleanDate != null)
+		{
+            logger.debug("Date : "+ date + " mapped to : "+ cleanDate);		    
+		}
+		else
+		{
+		    logger.debug("No Date match: "+ date);
+		}
 		return cleanDate;
 	}
     
@@ -429,11 +514,25 @@ public final class Utils {
 	}
 
 	/**
-	 * Remap a field
-	 * @param fieldVal
-	 * @param map
-	 * @param copyEntryIfNotInMap
-	 * @return
+	 * Remap a field value.  If the field value is not present in the map, then:
+	 *   if "displayRawIfMissing" is a key in the map, then the raw field value
+	 *   is used.
+	 *   if "displayRawIfMissing" is not a key in the map, and the allowDefault
+	 *   param is set to true, then if the map contains "__DEFAULT" as a key, 
+	 *   the value of "__DEFAULT" in the map is used;  if allowDefault is true
+	 *   and there is neither "displayRawIfMissing" nor "__DEFAULT", as a key
+	 *   in the map, then if the map contains an empty key, the map value of the
+	 *   empty key is used.
+	 *     NOTE:  If the spec for a field is supposed to contain all matching 
+	 *      values, then the default lookup needs to be done here.  If the spec
+	 *      for a field is only supposed to return the first matching mappable 
+	 *      value, then the default mapping should be done in the calling method 
+	 * @param fieldVal - the raw value to be mapped
+	 * @param map - the map to be used
+	 * @param allowDefault - if "displayRawIfMissing" is not a key in the map, 
+	 *   and this is to true, then if the map contains "__DEFAULT" as a key, 
+	 *   the value of "__DEFAULT" in the map is used.  
+	 * @return the new value, as determined by the mapping.
 	 */
     public static String remap(String fieldVal, Map<String, String> map, boolean allowDefault)
     {
@@ -451,8 +550,9 @@ public final class Utils {
                     if (parts[1].contains("$"))
                     {
                         newVal = fieldVal.replaceAll(parts[0], parts[1]);
+                        fieldVal = newVal;
                     }
-                    result = newVal;             
+                    result = newVal;                    
                 }
             }
         }
@@ -460,6 +560,14 @@ public final class Utils {
         {
             result = map.get(fieldVal);
         }
+        else if (map.containsKey("displayRawIfMissing")) 
+        {
+        	result = fieldVal;
+        }
+        else if (allowDefault && map.containsKey("__DEFAULT"))
+        {
+            result = map.get("__DEFAULT");
+        }                      
         else if (allowDefault && map.containsKey(""))
         {
             result = map.get("");
@@ -469,12 +577,27 @@ public final class Utils {
     }
 
     /**
-     * 
-     * @param set
-     * @param map
-     * @param copyEntryIfNotInMap
-     * @return
-     */
+	 * Remap a set of field values.  If a field value is not present in the map, 
+	 * then:
+	 *   if "displayRawIfMissing" is a key in the map, then the raw field value
+	 *   is used.
+	 *   if "displayRawIfMissing" is not a key in the map, and the allowDefault
+	 *   param is set to true, then if the map contains "__DEFAULT" as a key, 
+	 *   the value of "__DEFAULT" in the map is used;  if allowDefault is true
+	 *   and there is neither "displayRawIfMissing" nor "__DEFAULT", as a key
+	 *   in the map, then if the map contains an empty key, the map value of the
+	 *   empty key is used.
+	 *     NOTE:  If the spec for a field is supposed to contain all matching 
+	 *      values, then the default lookup needs to be done here.  If the spec
+	 *      for a field is only supposed to return the first matching mappable 
+	 *      value, then the default mapping should be done in the calling method 
+	 * @param fieldVal - the raw value to be mapped
+	 * @param map - the map to be used
+	 * @param allowDefault - if "displayRawIfMissing" is not a key in the map, 
+	 *   and this is to true, then if the map contains "__DEFAULT" as a key, 
+	 *   the value of "__DEFAULT" in the map is used.  
+	 * @return the new value, as determined by the mapping.
+	 */
     public static Set<String> remap(Set<String> set, Map<String, String> map, boolean allowDefault)
     {
         if (map == null)  return(set);
@@ -486,6 +609,7 @@ public final class Utils {
             String val = iter.next();
             if (map.keySet().contains("pattern_0"))
             {
+                String tmpResult = null;
                 for (int i = 0; i < map.keySet().size(); i++)
                 {
                     String patternStr = map.get("pattern_"+i);
@@ -496,10 +620,16 @@ public final class Utils {
                     	if (parts[1].contains("$"))
                     	{
                     		newVal = val.replaceAll(parts[0], parts[1]);
+                    		val = newVal;
                     	}
-                    	result.add(newVal);                    	
+                    	else
+                    	{
+                    	    result.add(newVal); 
+                    	}
+                    	tmpResult = newVal;
                     }
                 }
+                if (tmpResult != null) result.add(tmpResult); 
             }
             else
             {            
@@ -873,5 +1003,41 @@ public final class Utils {
             default:      return(0x00);
         }
     }
+	
+   @SuppressWarnings("unchecked")
+    public static void setLog4jLogLevel(org.apache.log4j.Level newLevel)
+    {
+        Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
+        Enumeration<Logger> enLogger = rootLogger.getLoggerRepository().getCurrentLoggers();
+        Logger tmpLogger = null;
+        /* If logger is root, then need to loop through all loggers under root
+        * and change their logging levels too.  Also, skip sql loggers so
+        they
+        * do not get effected.
+        */
+        while(enLogger.hasMoreElements())
+        {
+            tmpLogger = (Logger)(enLogger.nextElement());
+            tmpLogger.setLevel(newLevel);
+        }
+        Enumeration<Appender> enAppenders = rootLogger.getAllAppenders();
+        Appender appender;
+        while(enAppenders.hasMoreElements())
+        {
+            appender = (Appender)enAppenders.nextElement();
+            
+            if(appender instanceof AsyncAppender)
+            {
+                AsyncAppender asyncAppender = (AsyncAppender)appender;
+                asyncAppender.activateOptions();
+//	                rfa = (RollingFileAppender)asyncAppender.getAppender("R");
+//	                rfa.activateOptions();
+//	                ca = (ConsoleAppender)asyncAppender.getAppender("STDOUT");
+//	                ca.activateOptions();
+            }
+        }
+
+    }
+
 
 }
