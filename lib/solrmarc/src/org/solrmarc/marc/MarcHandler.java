@@ -215,6 +215,10 @@ public abstract class MarcHandler {
         {
             System.setProperty("org.marc4j.marc.MarcFactory", "org.solrmarc.marcoverride.NoSortMarcFactoryImpl");
         }
+        if (Utils.getProperty(configProps, "marc.upper_case_subfield") != null)
+        {
+            System.setProperty("org.marc4j.MarcPermissiveStreamReader.upperCaseSubfields", Utils.getProperty(configProps, "marc.upper_case_subfield").trim());
+        }
 
         reader = null;
         String fName = Utils.getProperty(configProps, "marc.path");
