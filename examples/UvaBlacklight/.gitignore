@@ -1,0 +1,5 @@
+/bin
+/dist
+/build_override.properties
+/lib
+/test
