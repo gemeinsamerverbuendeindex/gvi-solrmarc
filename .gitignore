@@ -1,2 +1,4 @@
 /dist
 /local_build
+/build/
+/nbproject/private/
