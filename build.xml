@@ -119,7 +119,9 @@
         <mkdir dir="${package.dir}" />
         <packagesrc version="${version}" />
         <packageprebuilt example="GenericBlacklight" binprefix="bin" version="${version}" />
-        <packageprebuilt example="GenericVuFind" binprefix="bin" version="${version}" />
+        <packageprebuilt example="GenericVuFind" binprefix="bin"
+			 version="${version}" />
+        <packageprebuilt example="GVI" binprefix="bin" version="${version}" />
         <packageprebuilt example="none" binprefix="bin" acceptpromptdefaults="true" version="${version}" /> 
     </target>
     
