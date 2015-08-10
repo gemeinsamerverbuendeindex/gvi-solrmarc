@@ -17,8 +17,8 @@ import org.apache.solr.client.solrj.impl.BinaryRequestWriter;
 //import org.apache.solr.client.solrj.impl.BinaryRequestWriterV1;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
 //import org.apache.solr.client.solrj.impl.BinaryResponseParserV1;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
-import org.apache.solr.client.solrj.impl.StreamingUpdateSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.request.RequestWriter;
 import org.solrmarc.tools.Utils;
@@ -354,36 +354,42 @@ public class SolrCoreLoader
     
     public static SolrProxy loadRemoteSolrServer(String solrHostUpdateURL, boolean useBinaryRequestHandler, boolean useStreamingServer)
     {
-        CommonsHttpSolrServer httpsolrserver;
+        SolrServer httpsolrserver;
         SolrProxy solrProxy = null;
         String urlString = solrHostUpdateURL.replaceAll("[/\\\\]update$", "");
-        try {
-            Class<?> clazz = Class.forName("org.apache.solr.client.solrj.impl.ResponseParserFactory");
+//        try {
+//            Class<?> clazz = Class.forName("org.apache.solr.client.solrj.impl.ResponseParserFactory");
             if (useStreamingServer)
             {
-                httpsolrserver = new StreamingUpdateSolrServer(urlString, 100, 2); 
+                httpsolrserver = new ConcurrentUpdateSolrServer(urlString, 100, 2);
             }
             else
             {
-                httpsolrserver = new CommonsHttpSolrServer(urlString);
+                httpsolrserver = new HttpSolrServer(urlString);
             }
             if (!useBinaryRequestHandler)
             {
-                httpsolrserver.setRequestWriter(new RequestWriter());
-                httpsolrserver.setParser( new XMLResponseParser());
+                if (httpsolrserver instanceof ConcurrentUpdateSolrServer) {
+                    ((ConcurrentUpdateSolrServer)httpsolrserver).setRequestWriter(new RequestWriter());
+                    ((ConcurrentUpdateSolrServer)httpsolrserver).setParser(new XMLResponseParser());
+                }
+                else {
+                    ((HttpSolrServer)httpsolrserver).setRequestWriter(new RequestWriter());
+                    ((HttpSolrServer)httpsolrserver).setParser(new XMLResponseParser());
+                }
             }
             solrProxy = new SolrServerProxy(httpsolrserver); 
             return(solrProxy);
-        }
-        catch (ClassNotFoundException e)
-        {
-            e.printStackTrace();
-        }
-        catch (MalformedURLException e)
-        {
-            e.printStackTrace();
-        }
-        return(null);
+//        }
+//        catch (ClassNotFoundException e)
+//        {
+//            e.printStackTrace();
+//        }
+//        catch (MalformedURLException e)
+//        {
+//            e.printStackTrace();
+//        }
+//        return(null);
 //        SolrServer solrserver;
 //        boolean supportsJavabin = false;
 //        String solrversion = "UNKNOWN";

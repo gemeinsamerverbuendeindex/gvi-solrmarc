@@ -53,11 +53,18 @@ public class SolrServerProxy implements SolrProxy
         {
             try
             {
+//                System.err.println("Trying add doc in proxy: " + inputDoc.toString().replaceAll("> ", "> \n"));
                 solrserver.add(inputDoc);
             }
             catch (SolrServerException e)
             {
+//                System.err.println("Got SolrServerException in SolrServerProxy:addDoc");
+//                e.printStackTrace(System.err);
                 throw(new SolrRuntimeException("SolrserverException", e));
+            }
+            catch (Exception ex) {
+//                System.err.println("Got Exception in SolrServerProxy:addDoc");
+//                ex.printStackTrace(System.err);
             }
         }
 
@@ -79,27 +86,33 @@ public class SolrServerProxy implements SolrProxy
             }
             catch (ClassNotFoundException e)
             {
-                //e.printStackTrace();
+                e.printStackTrace();
+                System.exit(1);
             }
             catch (SecurityException e)
             {
-                //e.printStackTrace();
+                e.printStackTrace();
+                System.exit(1);
             }
             catch (NoSuchMethodException e)
             {
-                //e.printStackTrace();
+               e.printStackTrace();
+                System.exit(1);
             }
             catch (IllegalArgumentException e)
             {
-                //e.printStackTrace();
+                e.printStackTrace();
+                System.exit(1);
             }
             catch (IllegalAccessException e)
             {
-                //e.printStackTrace();
+                e.printStackTrace();
+                System.exit(1);
             }
             catch (InvocationTargetException e)
             {
-                //e.printStackTrace();
+                e.printStackTrace();
+                System.exit(1);
             }
         }
     }

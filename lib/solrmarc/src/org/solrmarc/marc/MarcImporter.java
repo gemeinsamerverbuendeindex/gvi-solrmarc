@@ -306,7 +306,9 @@ public class MarcImporter extends MarcHandler
             try {
             	recCntlNum = record.getControlNumber();
             }
-            catch (NullPointerException npe) { /* ignore */ }
+            catch (NullPointerException npe) {
+            /* ignore */
+            }
 
             try {
                 Map <String, Object> fieldsMap = addToIndex(record);
@@ -323,6 +325,8 @@ public class MarcImporter extends MarcHandler
             }
             catch (Exception e)
             {
+//                System.err.println("Got exception in importRecords, stack trace");
+//                e.printStackTrace();
                 Throwable cause = null;
                 if (e instanceof SolrRuntimeException) 
                 {
@@ -362,15 +366,15 @@ public class MarcImporter extends MarcHandler
                     }
                     if (smie.getLevel() == SolrMarcIndexerException.IGNORE)
                     {
-           	            logger.info("Ignored record " + (recCntlNum != null ? recCntlNum : "") + idMessage + " (record count " + recsReadCounter + ")");
+           	            logger.warn("Ignored record " + (recCntlNum != null ? recCntlNum : "") + idMessage + " (record count " + recsReadCounter + ")");
                     }
                     else if (smie.getLevel() == SolrMarcIndexerException.DELETE)
                     {            
-           	            logger.info("Deleted record " + (recCntlNum != null ? recCntlNum : "") + idMessage + " (record count " + recsReadCounter + ")");
+           	            logger.warn("Deleted record " + (recCntlNum != null ? recCntlNum : "") + idMessage + " (record count " + recsReadCounter + ")");
                     }
                     else if (smie.getLevel() == SolrMarcIndexerException.EXIT)
                     {
-           	            logger.info("Serious Error flagged in record " + (recCntlNum != null ? recCntlNum : "") + idMessage + " (record count " + recsReadCounter + ")");
+           	            logger.warn("Serious Error flagged in record " + (recCntlNum != null ? recCntlNum : "") + idMessage + " (record count " + recsReadCounter + ")");
                         throw(smie);
                     }
                 }
@@ -448,6 +452,10 @@ public class MarcImporter extends MarcHandler
                 throw(smie);
             }
         }
+        catch (Exception e) {
+//            System.err.println("Got Exception in addToIndex(record)");
+//            e.printStackTrace(System.err);
+        }
         return(null);
     }
     
@@ -459,6 +467,7 @@ public class MarcImporter extends MarcHandler
     protected String addToIndex(Map<String, Object> fieldsMap)
         throws IOException
     {
+        String ret;
         if (fieldsMap.size() == 0) 
             return null;
         if (errors != null && includeErrors)
@@ -468,9 +477,9 @@ public class MarcImporter extends MarcHandler
                 addErrorsToMap(fieldsMap, errors);
             }
         }
-
+        ret = solrProxy.addDoc(fieldsMap, verbose, !justIndexDontAdd);
         // NOTE: exceptions are dealt with by calling class
-        return solrProxy.addDoc(fieldsMap, verbose, !justIndexDontAdd);
+        return ret;
     }
             
     private void addErrorsToMap(Map<String, Object> map, ErrorHandler errors2)
@@ -486,12 +495,12 @@ public class MarcImporter extends MarcHandler
         if (commitAtEnd)
         {
             try {
-                //System.out.println("Calling commit");
+                System.out.println("Calling commit");
                 logger.info("Calling commit (with optimize set to "+(shuttingDown ? "false" : optimizeAtEnd ? "true" : "false")+")");
                 solrProxy.commit(shuttingDown ? false : optimizeAtEnd);
             } 
             catch (IOException ioe) {
-                //System.err.println("Final commit and optmization failed");
+                System.err.println("Final commit and optmization failed");
                 logger.error("Final commit and optimization failed: " + ioe.getMessage());
                 logger.debug(ioe);
                 //e.printStackTrace();
@@ -548,7 +557,9 @@ public class MarcImporter extends MarcHandler
      */
     public void shutDown()
     {
+        logger.info("set shuttingDown flag");
         shuttingDown = true;
+        logger.info("shuttingDown flag is true");
     }
     
     
@@ -561,13 +572,14 @@ public class MarcImporter extends MarcHandler
         }
         public void run()
         {
-            //System.err.println("Starting Shutdown hook");
             logger.info("Starting Shutdown hook");
             
             if (!importer.isShutDown) 
             {
                 logger.info("Stopping main loop");
-                importer.shutDown();
+                synchronized (this) {
+                    importer.shutDown();
+                }
             }
             while (!importer.isShutDown) 
             {
@@ -634,7 +646,7 @@ public class MarcImporter extends MarcHandler
         logger.info("Indexed " + numImported + " at a rate of about " + indexingRate + " per sec");
         logger.info("Deleted " + numDeleted + " records");
         
-        return(shuttingDown ? 1 : 0);
+        return(isShutDown ? 1 : 0);
     }
 
     public SolrProxy getSolrProxy()
@@ -861,10 +873,18 @@ public class MarcImporter extends MarcHandler
             //e.printStackTrace();
             System.exit(1);
         }
-        
-        int exitCode = importer.handleAll();
+        int exitCode=1;
+        try {
+            exitCode = importer.handleAll();
+//            System.err.println("Return code = "+exitCode);
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+            System.exit(exitCode);
+        }
       //  System.clearProperty("marc.path");
       //  System.clearProperty("marc.source");
+//        System.err.println("Return code = "+exitCode);
         System.exit(exitCode);
     }
 }

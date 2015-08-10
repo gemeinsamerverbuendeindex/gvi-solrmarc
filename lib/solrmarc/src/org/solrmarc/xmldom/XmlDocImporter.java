@@ -588,8 +588,8 @@ public class XmlDocImporter extends XmlDocHandler
         }
         catch (Exception e)
         {
-            logger.info("Exception occurred while Indexing: "+ e.getMessage());
-            logger.info("Setting Solr closed flag");
+            logger.warn("Exception occurred while Indexing: "+ e.getMessage());
+            logger.warn("Setting Solr closed flag");
             isShutDown = true;
         }
         
@@ -842,7 +842,7 @@ public class XmlDocImporter extends XmlDocHandler
             //e.printStackTrace();
             System.exit(1);
         }
-        
+
         int exitCode = importer.handleAll();
       //  System.clearProperty("marc.path");
       //  System.clearProperty("marc.source");
