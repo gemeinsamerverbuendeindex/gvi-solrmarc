@@ -2,6 +2,7 @@ package org.solrmarc.marc;
 
 import java.io.*;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -12,7 +13,7 @@ import org.solrmarc.tools.Utils;
 
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -32,7 +33,7 @@ public class SolrReIndexer extends MarcImporter
     protected String solrFieldContainingEncodedMarcRecord;
     protected boolean doUpdate = true;
     protected MarcWriter output = null;
-    protected SolrServer solrServer= null;
+    protected SolrClient solrServer= null;
     private boolean getIdsOnly = false;
     
     // Initialize logging category
@@ -118,7 +119,7 @@ public class SolrReIndexer extends MarcImporter
         
         SolrQuery query = new SolrQuery();
         query.setQuery(queryForRecordsToUpdate);
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         query.setFacet(false);
         query.setRows(1000);
         query.setFields("id");
@@ -147,6 +148,10 @@ public class SolrReIndexer extends MarcImporter
         {
             // TODO Auto-generated catch block
             e.printStackTrace();
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
         }  
     }
     
@@ -168,7 +173,7 @@ public class SolrReIndexer extends MarcImporter
         // grab them 1000 at a time
         SolrQuery query = new SolrQuery();
         query.setQuery(queryForRecordsToUpdate);
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         query.setFacet(false);
         query.setRows(1000);
         int totalHits = -1;
@@ -196,6 +201,10 @@ public class SolrReIndexer extends MarcImporter
         {
             // TODO Auto-generated catch block
             e.printStackTrace();
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
         }  
     }
     
@@ -210,7 +219,7 @@ public class SolrReIndexer extends MarcImporter
     {
         SolrQuery query = new SolrQuery();
         query.setQuery(field+":"+term);
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         query.setFacet(false);
 
         try
@@ -239,6 +248,10 @@ public class SolrReIndexer extends MarcImporter
         catch (SolrServerException e)
         {
             // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        catch (IOException e)
+        {
             e.printStackTrace();
         }
         return(null);

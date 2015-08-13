@@ -2,22 +2,18 @@ package org.solrmarc.testUtils;
 
 import static org.junit.Assert.*;
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.MethodRule;
 import org.junit.rules.TestWatchman;
 import org.junit.runners.model.FrameworkMethod;
-import org.marc4j.marc.Record;
 
 import java.io.*;
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
-import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.log4j.*;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
@@ -25,14 +21,12 @@ import org.apache.solr.common.SolrDocumentList;
 import org.solrmarc.marc.MarcImporter;
 import org.solrmarc.solr.*;
 import org.solrmarc.tools.CommandLineUtilTests;
-import org.solrmarc.tools.Utils;
-import org.xml.sax.SAXException;
 
 public abstract class IndexTest {
 	
 //	protected MarcImporter importer;
     protected SolrProxy solrProxy;
-	protected SolrServer solrServer;
+	protected SolrClient solrServer;
 //    protected Map<String,String> allOrigProps;
 //    protected Map<String,String> backupProps;
 //    protected Map<String,String> addnlProps;
@@ -303,7 +297,7 @@ public abstract class IndexTest {
 	{
         SolrQuery query = new SolrQuery();
         query.setQuery(field+":"+value);
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         return (getDocList(query));
 	}
 	
@@ -312,7 +306,7 @@ public abstract class IndexTest {
         // grab them 1000 at a time
         int retry = 5;
         SolrDocumentList result = null;
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         query.setFacet(false);
         query.setRows(1000);
         while (retry > 0)
@@ -334,6 +328,18 @@ public abstract class IndexTest {
                 break;
             }
             catch (SolrServerException e)
+            {
+                retry--;
+                try
+                {
+                    //System.out.println("retrying search");
+                    Thread.sleep(1000);
+                }
+                catch (InterruptedException e1)
+                {
+                }
+            }
+            catch (IOException ex)
             {
                 retry--;
                 try
@@ -675,9 +681,9 @@ public abstract class IndexTest {
 	public final SolrDocumentList getAscSortDocs(String fld, String value, String sortfld) 
 	{
         SolrQuery query = new SolrQuery(fld+":"+value);
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         query.setFacet(false);
-        query.setSortField(sortfld, SolrQuery.ORDER.asc);
+        query.setSort(sortfld, SolrQuery.ORDER.asc);
         return(getDocList(query));
 	}
 	
@@ -694,9 +700,9 @@ public abstract class IndexTest {
 	public final SolrDocumentList getDescSortDocs(String fld, String value, String sortfld) 
 	{
         SolrQuery query = new SolrQuery(fld+":"+value);
-        query.setQueryType("standard");
+        query.setRequestHandler("standard");
         query.setFacet(false);
-        query.setSortField(sortfld, SolrQuery.ORDER.desc);
+        query.setSort(sortfld, SolrQuery.ORDER.desc);
         return(getDocList(query));
 	}
 		

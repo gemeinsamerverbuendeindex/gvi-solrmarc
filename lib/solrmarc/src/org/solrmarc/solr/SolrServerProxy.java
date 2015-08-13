@@ -6,23 +6,21 @@ import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
-
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.SolrInputField;
 
 public class SolrServerProxy implements SolrProxy
 {
-    SolrServer solrserver;
+    SolrClient solrserver;
     Object coreContainerObject = null;
     
-    public SolrServerProxy(SolrServer solrserver)
+    public SolrServerProxy(SolrClient solrserver)
     {
         this.solrserver = solrserver;
     }
     
-    public SolrServerProxy(SolrServer solrserver, Object coreContainerObject)
+    public SolrServerProxy(SolrClient solrserver, Object coreContainerObject)
     {
         this.solrserver = solrserver;
         this.coreContainerObject = coreContainerObject;
@@ -104,7 +102,7 @@ public class SolrServerProxy implements SolrProxy
         }
     }
 
-    public SolrServer getSolrServer()
+    public SolrClient getSolrServer()
     {
         return(solrserver);        
     }
