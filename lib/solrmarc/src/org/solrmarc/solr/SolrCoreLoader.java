@@ -7,10 +7,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import org.apache.log4j.Logger;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
 //import org.apache.solr.client.solrj.impl.BinaryResponseParserV1;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.request.RequestWriter;
 import org.xml.sax.InputSource;
@@ -329,7 +329,7 @@ public class SolrCoreLoader
                     }
                 }
                 
-            return(new SolrServerProxy((SolrServer) solrServerObj, coreContainerObj));
+            return(new SolrServerProxy((SolrClient) solrServerObj, coreContainerObj));
         }
         catch (Exception e)
         {
@@ -350,7 +350,7 @@ public class SolrCoreLoader
         try {
             if (useStreamingServer)
             {
-                ConcurrentUpdateSolrServer httpsolrserver = new ConcurrentUpdateSolrServer(urlString, 1000, 4); 
+                ConcurrentUpdateSolrClient httpsolrserver = new ConcurrentUpdateSolrClient(urlString, 1000, 4); 
                 if (!useBinaryRequestHandler)
                 {
                     httpsolrserver.setRequestWriter(new RequestWriter());
@@ -361,7 +361,7 @@ public class SolrCoreLoader
             else
             {
                   
-                HttpSolrServer httpsolrserver = new HttpSolrServer(urlString);
+                HttpSolrClient httpsolrserver = new HttpSolrClient(urlString);
                 if (!useBinaryRequestHandler)
                 {
                     httpsolrserver.setRequestWriter(new RequestWriter());
