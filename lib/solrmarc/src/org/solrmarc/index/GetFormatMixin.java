@@ -1069,8 +1069,9 @@ public class GetFormatMixin extends SolrIndexerMixin
             switch (profile)
             {
                 case Books:
-                {
-                    typeToAdd = defaultType;
+                {                   
+                    if (contentTypesStr.isEmpty())
+                        typeToAdd = defaultType;
                     break;
                 }
                 case Computers: 
