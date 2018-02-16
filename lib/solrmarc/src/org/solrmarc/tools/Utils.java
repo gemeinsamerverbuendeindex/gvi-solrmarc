@@ -16,20 +16,32 @@ package org.solrmarc.tools;
  * limitations under the License.
  */
 
-import java.io.*;
-import java.text.DecimalFormat;
-import java.text.SimpleDateFormat;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.*;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.log4j.Appender;
-import org.apache.log4j.AsyncAppender;
 import org.apache.log4j.Logger;
-import org.marc4j.marc.*;
-import org.solrmarc.marc.MarcImporter;
+import org.marc4j.marc.DataField;
+import org.marc4j.marc.Record;
+import org.marc4j.marc.Subfield;
+import org.marc4j.marc.VariableField;
 
 /**
  * General utility functions for solrmarc
@@ -223,92 +235,13 @@ public final class Utils {
     
     public static InputStream getPropertyFileInputStream(String[] propertyPaths, String propertyFileName, boolean showName, String inputSource[]) 
     {
-        InputStream in = null;
         String fullPropertyFileURLStr = getPropertyFileAbsoluteURL(propertyPaths, propertyFileName, showName, inputSource);
         return(getPropertyFileInputStream(fullPropertyFileURLStr));
     }
     
-//        String verboseStr = System.getProperty("marc.test.verbose");
-//        boolean verbose = (verboseStr != null && verboseStr.equalsIgnoreCase("true"));
-//        String lookedIn = "";
-//        if (propertyPaths != null)
-//        {
-//            File propertyFile = new File(propertyFileName);
-//            int pathCnt = 0;
-//            do 
-//            {
-//                if (propertyFile.exists() && propertyFile.isFile() && propertyFile.canRead())
-//                {
-//                    try
-//                    {
-//                        in = new FileInputStream(propertyFile);
-//                        if (inputSource != null && inputSource.length >= 1)
-//                        {
-//                            inputSource[0] = propertyFile.getAbsolutePath();
-//                        }
-//                        if (showName)
-//                            logger.info("Opening file: "+ propertyFile.getAbsolutePath());
-//                        else
-//                            logger.debug("Opening file: "+ propertyFile.getAbsolutePath());
-//                    }
-//                    catch (FileNotFoundException e)
-//                    {
-//                        // simply eat this exception since we should only try to open the file if we previously
-//                        // determined that the file exists and is readable. 
-//                    }
-//                    break;   // we found it!
-//                }
-//                if (verbose)  lookedIn = lookedIn + propertyFile.getAbsolutePath() + "\n";
-//                if (propertyPaths != null && pathCnt < propertyPaths.length)
-//                {
-//                    propertyFile = new File(propertyPaths[pathCnt], propertyFileName);
-//                }
-//                pathCnt++;
-//            } while (propertyPaths != null && pathCnt <= propertyPaths.length);
-//        }
-//        // if we didn't find it as a file, look for it as a URL
-//        String errmsg = "Fatal error: Unable to find specified properties file: " + propertyFileName;
-//        if (verbose) errmsg = errmsg + "\n Looked in: "+ lookedIn;
-//        if (in == null)
-//        {
-//            Utils utilObj = new Utils();
-//            URL url = utilObj.getClass().getClassLoader().getResource(propertyFileName);
-//            if (url == null)  
-//                url = utilObj.getClass().getResource("/" + propertyFileName);
-//            if (url == null)
-//            {
-//                logger.error(errmsg);
-//                throw new IllegalArgumentException(errmsg);
-//            }
-//            if (showName)
-//                logger.info("Opening resource via URL: "+ url.toString());
-//            else
-//                logger.debug("Opening resource via URL: "+ url.toString());
-//
-///*
-//            if (url == null) 
-//                url = utilObj.getClass().getClassLoader().getResource(propertyPath + "/" + propertyFileName);
-//            if (url == null) 
-//                url = utilObj.getClass().getResource("/" + propertyPath + "/" + propertyFileName);
-//*/
-//            if (url != null)
-//            {
-//                try
-//                {
-//                    in = url.openStream();
-//                }
-//                catch (IOException e)
-//                {
-//                    throw new IllegalArgumentException(errmsg);
-//                }
-//            }
-//        }
-//        return(in);
-//    }
     
     public static String getPropertyFileAbsoluteURL(String[] propertyPaths, String propertyFileName, boolean showName, String inputSource[]) 
     {
-        InputStream in = null;
         // look for properties file in paths
         String verboseStr = System.getProperty("marc.test.verbose");
         boolean verbose = (verboseStr != null && verboseStr.equalsIgnoreCase("true"));
@@ -1106,7 +1039,6 @@ public final class Utils {
      * subfield data from the field, place it in a single string (individual 
      * subfield data separated by spaces) and add the string to the result set.
      */
-    @SuppressWarnings("unchecked")
     public static final Set<String> getAllSubfields(final Record record, String[] tags) 
     {
         Set<String> result = new LinkedHashSet<String>();
@@ -1154,10 +1086,9 @@ public final class Utils {
     /** returns all values of subfield strings of a particular code 
      *  contained in the data field
      */
-    @SuppressWarnings("unchecked")
     public static final List<String> getSubfieldStrings(DataField df, char code) {
         List<Subfield> listSubcode = df.getSubfields(code);
-        List<String> vals = new ArrayList(listSubcode.size());
+        List<String> vals = new ArrayList<>(listSubcode.size());
         for (Subfield s : listSubcode) {
             vals.add(s.getData());
         }
@@ -1251,39 +1182,13 @@ public final class Utils {
         }
     }
     
-   @SuppressWarnings("unchecked")
-    public static void setLog4jLogLevel(org.apache.log4j.Level newLevel)
-    {
-        Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
-        Enumeration<Logger> enLogger = rootLogger.getLoggerRepository().getCurrentLoggers();
-        Logger tmpLogger = null;
-        /* If logger is root, then need to loop through all loggers under root
-        * and change their logging levels too.  Also, skip sql loggers so
-        they
-        * do not get effected.
-        */
-        while(enLogger.hasMoreElements())
-        {
-            tmpLogger = (Logger)(enLogger.nextElement());
-            tmpLogger.setLevel(newLevel);
-        }
-        Enumeration<Appender> enAppenders = rootLogger.getAllAppenders();
-        Appender appender;
-        while(enAppenders.hasMoreElements())
-        {
-            appender = (Appender)enAppenders.nextElement();
-            
-            if(appender instanceof AsyncAppender)
-            {
-                AsyncAppender asyncAppender = (AsyncAppender)appender;
-                asyncAppender.activateOptions();
-//                    rfa = (RollingFileAppender)asyncAppender.getAppender("R");
-//                    rfa.activateOptions();
-//                    ca = (ConsoleAppender)asyncAppender.getAppender("STDOUT");
-//                    ca.activateOptions();
-            }
-        }
-
+    /**
+     * Do nothing<br>
+     * Deactivated for a Log4j2 environment
+     * @param newLevel
+     */
+    @Deprecated
+   public static void setLog4jLogLevel(org.apache.log4j.Level newLevel) {
     }
 
 
