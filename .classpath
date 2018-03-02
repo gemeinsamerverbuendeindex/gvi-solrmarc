@@ -7,7 +7,6 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/4"/>
 	<classpathentry kind="lib" path="lib/bsh-2.0b4.jar"/>
 	<classpathentry kind="lib" path="lib/commons-io-2.5.jar"/>
-	<classpathentry kind="lib" path="lib/gndnormdaten_v0.8.1.jar"/>
 	<classpathentry kind="lib" path="lib/hdstoolkit.jar"/>
 	<classpathentry kind="lib" path="lib/httpclient-4.4.1.jar"/>
 	<classpathentry kind="lib" path="lib/httpcore-4.4.1.jar"/>
@@ -15,10 +14,6 @@
 	<classpathentry kind="lib" path="lib/jcl-over-slf4j-1.7.7.jar"/>
 	<classpathentry kind="lib" path="lib/junit-4.12.jar"/>
 	<classpathentry kind="lib" path="lib/jzkit_client.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-1.2.16.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-api-2.0.1.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-core-2.0.1.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-slf4j-impl-2.0.1.jar"/>
 	<classpathentry kind="lib" path="lib/marc4j-2.6.4.jar"/>
 	<classpathentry kind="lib" path="lib/noggit-0.6.jar"/>
 	<classpathentry kind="lib" path="lib/normalizer_solrmarc-1.0.jar"/>
@@ -26,5 +21,9 @@
 	<classpathentry kind="lib" path="lib/slf4j-api-1.7.7.jar"/>
 	<classpathentry kind="lib" path="lib/solr-solrj-6.6.0.jar"/>
 	<classpathentry kind="lib" path="/home/uwe/git/gvi-solrmarc/lib/log4j-1.2-api-2.10.0.jar"/>
+	<classpathentry kind="lib" path="/home/uwe/git/gvi-solrmarc/lib/log4j-core-2.10.0.jar"/>
+	<classpathentry kind="lib" path="/home/uwe/git/gvi-solrmarc/lib/log4j-api-2.10.0.jar"/>
+	<classpathentry kind="lib" path="/home/uwe/git/gvi-solrmarc/lib/log4j-slf4j-impl-2.10.0.jar"/>
+	<classpathentry kind="lib" path="/home/uwe/git/gvi-solrmarc/lib/gndnormdaten_v0.8.4.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
