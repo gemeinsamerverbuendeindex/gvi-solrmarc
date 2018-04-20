@@ -23,6 +23,6 @@
 	<classpathentry kind="lib" path="lib/log4j-api-2.10.0.jar"/>
 	<classpathentry kind="lib" path="lib/log4j-core-2.10.0.jar"/>
 	<classpathentry kind="lib" path="lib/log4j-slf4j-impl-2.10.0.jar"/>
-	<classpathentry kind="lib" path="lib/gndnormdaten_v0.8.5.jar"/>
+	<classpathentry kind="lib" path="lib/gndnormdaten_v0.8.6.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
